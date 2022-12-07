@@ -1,0 +1,24 @@
+{
+  "dependencies": {
+    "artnet-protocol": "^0.2.1",
+    "ws": "^8.11.0"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "name": "hektopixel",
+  "type": "module",
+  "version": "1.0.0",
+  "main": "server.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kbedra-tbscg/hektopixel.git"
+  },
+  "author": "kbedra",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kbedra-tbscg/hektopixel/issues"
+  },
+  "homepage": "https://github.com/kbedra-tbscg/hektopixel#readme",
+  "description": ""
+}
