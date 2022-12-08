@@ -1,18 +1,20 @@
 <template>
-  <q-page class="flex flex-center">
-    <button @click="sendMessage">Send Message</button>
-    <button @click="startRecording">Rec</button>
-    <button @click="stopRecording">Stop</button>
-    <button @click="playAnimation">Play</button>
-    <input v-model="videoUrl">
-    <div>
-      <canvas id="hektopix" />
-    </div>
-    <div>
-      <canvas id="preview" />
-    </div>
-
-    <video id="video" src="http://upload.wikimedia.org/wikipedia/commons/7/79/Big_Buck_Bunny_small.ogv" controls="false"></video>
+  <q-page class="flex flex-center q-pa-lg">
+    <q-btn color="primary" @click="sendCommand(2)">Record</q-btn>
+    <q-btn color="primary" @click="sendCommand(2)">Record</q-btn>
+    <q-btn color="primary" @click="sendFrame">Send Frame</q-btn>
+    <q-input v-model="filename" label="Filename"/>
+    <q-btn color="primary" @click="playAnimation">Play animation</q-btn>
+    <q-btn color="primary" @click="sendCommand(5)">Stop animation</q-btn>
+    <q-slider v-model="left" :min="-2000" :max="0"/>
+    <q-slider v-model="top" :min="-1000" :max="0"/>
+    <q-btn color="primary" @click="changeZoom(1.1)">Z+1</q-btn>
+    <q-btn color="primary" @click="changeZoom(0.9)">Z-1</q-btn>
+    <q-btn color="primary" @click="startCapture">Capture</q-btn>
+    <q-btn color="primary" @click="stopCapture">Stop capture</q-btn>
+    <canvas id="hektopix" />
+    <canvas id="preview" />
+    <video id="video" autoplay></video>
   </q-page>
 
 </template>
@@ -49,17 +51,26 @@ export default defineComponent({
 
       return scaled;
     },
-    startRecording: function() {
-      let buffer = new ArrayBuffer(1);
-      const dataView = new DataView(buffer);
-      dataView.setUint8(0,2);
-      this.connection.send(buffer)
+    stopCapture() {
+      let tracks = this.video.srcObject.getTracks();
+      tracks.forEach((track) => track.stop());
+      this.video.srcObject = null;
     },
-    stopRecording: function() {
-      let buffer = new ArrayBuffer(1);
-      const dataView = new DataView(buffer);
-      dataView.setUint8(0,3);
-      this.connection.send(buffer)
+    async startCapture() {
+      const displayMediaOptions = {
+        audio: false
+      };
+      try {
+        this.video.srcObject = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+      } catch (err) {
+        console.error(`Error: ${err}`);
+      }
+    },
+    sendCommand(cmd_val, param) {
+      const enc = new TextEncoder();
+      const text = enc.encode(param)
+      const cmd = new Uint8Array([cmd_val]);
+      this.connection.send(this.concatTypedArrays(cmd,text))
     },
     concatTypedArrays(a, b) { // a, b TypedArray of same type
       let c = new (a.constructor)(a.length + b.length);
@@ -67,19 +78,16 @@ export default defineComponent({
       c.set(b, a.length);
       return c;
     },
-    playAnimation: function() {
-      const enc = new TextEncoder();
-      const text = enc.encode('1670413878597.dat')
-
-      console.log('text', text)
-      const cmd = new Uint8Array(['0x04']);
-      console.log(this.concatTypedArrays(cmd,text))
-      this.connection.send(this.concatTypedArrays(cmd,text))
+    changeZoom(z) {
+      this.ctx.scale(z,z);
     },
-    sendMessage: function() {
+    playAnimation: function() {
+      this.sendCommand(4,this.filename)
+    },
+    sendFrame: function() {
       if (!this.video.paused && !this.video.ended) {
-        this.ctx.drawImage(this.video, 0, 0);
-        setTimeout(this.sendMessage, 1000 / 30); // drawing at 30fps
+        this.ctx.drawImage(this.video, this.left, this.top);
+        setTimeout(this.sendFrame, 1000 / 25); // drawing at 25fps
       }
 
       let buffer = new ArrayBuffer(300*3+1);
@@ -98,20 +106,31 @@ export default defineComponent({
     const canvas = document.getElementById("hektopix");
     this.ctx = canvas.getContext("2d");
     this.ctx.rect(0, 0, 200, 150);
-    this.ctx.scale(0.1,0.1);
 
-    // Create gradient
-    const grd = this.ctx.createLinearGradient(0, 0, 20, 0);
-    grd.addColorStop(0, "black");
-    grd.addColorStop(1, "white");
-
-    // Fill with gradient
-    this.ctx.fillStyle = grd;
+    this.ctx.fillStyle = '#000000';
     this.ctx.fillRect(0, 0, 20, 15);
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, 0);
+    this.ctx.lineTo(20, 0);
+    this.ctx.strokeStyle = '#ff0000';
+    this.ctx.stroke();
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, 0);
+    this.ctx.lineTo(0, 15);
+    this.ctx.strokeStyle = '#00FF00';
+    this.ctx.stroke();
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, 0);
+    this.ctx.lineTo(20, 15);
+    this.ctx.strokeStyle = '#0000FF';
+    this.ctx.stroke();
 
     this.video = document.getElementById('video');
     this.video.crossOrigin = "Anonymous"
-    this.video.addEventListener('play', this.sendMessage, 0);
+    this.video.addEventListener('play', this.sendFrame, 0);
 
     const canvas2 = document.getElementById("preview");
     const prev = canvas2.getContext("2d");
@@ -123,13 +142,11 @@ export default defineComponent({
 
     this.connection.onmessage = function(event) {
       if (typeof event.data === 'string'){
-        console.log('string');
         console.log(JSON.parse(event.data))
       } else {
         const arrayBuffer = event.data.arrayBuffer();
         arrayBuffer.then((data) => {
           const uint8View = new Uint8Array(data);
-          console.log(uint8View);
           const previewData = new Uint8ClampedArray(300 * 4)
           for (let i = 0; i < 300; i++) {
             previewData[(i * 4)] = uint8View[(i * 3)]
@@ -147,16 +164,22 @@ export default defineComponent({
       console.log(event)
       console.log("Successfully connected to the echo websocket server...")
     }
-
-
   },
-  setup() {
-
-  }
+  data() {
+    return {
+      filename: '',
+      left: 0,
+      top: 0
+    }
+  },
 });
 </script>
 <style>
 #hektopix, #preview {
   border: solid 1px black;
+}
+#video {
+  border: solid 1px red;
+  max-width: 300px;
 }
 </style>

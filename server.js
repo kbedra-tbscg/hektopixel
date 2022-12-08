@@ -5,7 +5,7 @@ import fs from 'fs'
 // creating a client socket to wled
 const wled = udp.createSocket('udp4');
 const wledPort = 19446;
-const wledIp = '192.168.1.225';
+const wledIp = '192.168.1.209';
 
 function wledSend(frame) {
   const translated = Buffer.alloc(900)
@@ -32,6 +32,10 @@ function wledSend(frame) {
   });
 }
 
+const status = {
+  playing: false,
+}
+
 const sockserver = new WebSocketServer({ port: 8081 });
 sockserver.on('connection', (ws) => {
   console.log('New client connected!');
@@ -51,9 +55,7 @@ sockserver.on('connection', (ws) => {
   sendFiles()
 
   ws.on('message', function message(data) {
-    console.log('data', data)
     const cmd = data.subarray(0, 1).readInt8(0);
-    console.log('cmd', cmd)
     switch (cmd) {
       case 1: // frame
         const frame = data.subarray(1, 901);
@@ -86,42 +88,57 @@ sockserver.on('connection', (ws) => {
         const file = data.subarray(1, data.length);
         // file.toString()
         console.log('playing file', file.toString());
-
-        fs.open('animations/' + file.toString(), 'r', function(err, fd) {
-          if (err) throw err;
-          function readNextChunk() {
-            let CHUNK_SIZE = 900
-            let buffer = Buffer.alloc(CHUNK_SIZE)
-
-            fs.read(fd, buffer, 0, CHUNK_SIZE, null, function(err, nread) {
+        if (!status.playing) {
+          status.playing = true
+          function readFile() {
+            fs.open('animations/' + file.toString(), 'r', function (err, fd) {
               if (err) throw err;
 
-              if (nread === 0) {
-                // done reading file, do any necessary finalization steps
+              function readNextChunk() {
+                let CHUNK_SIZE = 900
+                let buffer = Buffer.alloc(CHUNK_SIZE)
 
-                fs.close(fd, function(err) {
+                if (!status.playing) {
+                  console.log('closing file');
+                  fs.close(fd, function (err) {
+                    if (err) throw err;
+                  });
+                  return;
+                }
+
+                fs.read(fd, buffer, 0, CHUNK_SIZE, null, function (err, nread) {
                   if (err) throw err;
+
+                  if (nread === 0) { // done reading file, do any necessary finalization steps
+                    fs.close(fd, function (err) {
+                      if (err) throw err;
+                    });
+                    readFile();
+                    return;
+                  }
+
+                  let data;
+                  if (nread < CHUNK_SIZE)
+                    data = buffer.slice(0, nread);
+                  else
+                    data = buffer;
+
+                  setTimeout(() => {
+                    ws.send(data)
+                    wledSend(data)
+                    readNextChunk();
+                  }, 1000 / 25)
                 });
-                return;
               }
 
-              let data;
-              if (nread < CHUNK_SIZE)
-                data = buffer.slice(0, nread);
-              else
-                data = buffer;
-
-              // do something with `data`, then call `readNextChunk();`
-              setTimeout(()=>{
-                ws.send(data)
-                console.log(data);
-                readNextChunk();
-              },1000 / 25)
-              console.log(data)
+              readNextChunk();
             });
           }
-          readNextChunk();
-        });
+          readFile()
+        }
+        break;
+      case 5: //stop animation
+        status.playing = false
         break;
       default:
         console.warn('unknown command')
