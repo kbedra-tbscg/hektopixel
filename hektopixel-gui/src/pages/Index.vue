@@ -1,7 +1,7 @@
 <template>
   <q-page class="flex flex-center q-pa-lg">
     <q-btn color="primary" @click="sendCommand(2)">Record</q-btn>
-    <q-btn color="primary" @click="sendCommand(2)">Record</q-btn>
+    <q-btn color="primary" @click="sendCommand(3)">Stop Recording</q-btn>
     <q-btn color="primary" @click="sendFrame">Send Frame</q-btn>
     <q-input v-model="filename" label="Filename"/>
     <q-btn color="primary" @click="playAnimation">Play animation</q-btn>

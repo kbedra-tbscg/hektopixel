@@ -1,11 +1,27 @@
-import { WebSocketServer } from 'ws';
-import udp from 'dgram'
-import fs from 'fs'
+const { WebSocketServer } = require('ws')
+const udp = require('dgram')
+const fs = require('fs')
+
+const http = require('http');
+
+const finalhandler = require('finalhandler');
+const serveStatic = require('serve-static');
+
+const serve = serveStatic("./hektopixel-gui/dist/spa/");
+
+const server = http.createServer(function(req, res) {
+  const done = finalhandler(req, res);
+  serve(req, res, done);
+});
+
+server.listen(80);
+console.log('Static http server started at :80')
 
 // creating a client socket to wled
 const wled = udp.createSocket('udp4');
 const wledPort = 19446;
-const wledIp = '192.168.1.209';
+const wledIp = '172.24.1.21';
+const animationsDir = 'animations'
 
 function wledSend(frame) {
   const translated = Buffer.alloc(900)
@@ -37,13 +53,15 @@ const status = {
 }
 
 const sockserver = new WebSocketServer({ port: 8081 });
+console.log('Websocket server started at :8081')
+
 sockserver.on('connection', (ws) => {
   console.log('New client connected!');
   let stream = null;
   let recordTimeout = null;
 
   function sendFiles() {
-    fs.readdir('animations', function (err, files) {
+    fs.readdir(animationsDir, function (err, files) {
       //handling error
       if (err) {
         return console.log('Unable to scan directory: ' + err);
@@ -69,7 +87,7 @@ sockserver.on('connection', (ws) => {
         if (!stream) {
           console.log('Start record')
           const timestamp = Date.now();
-          stream = fs.createWriteStream('animations/' + timestamp + '.dat', {flags: 'a'});
+          stream = fs.createWriteStream(animationsDir + '/' + timestamp + '.dat', {flags: 'a'});
           recordTimeout = setTimeout(() => {
             if (stream) {
               console.log('Recording timeout')
@@ -86,56 +104,66 @@ sockserver.on('connection', (ws) => {
         break;
       case 4:
         const file = data.subarray(1, data.length);
-        // file.toString()
-        console.log('playing file', file.toString());
-        if (!status.playing) {
-          status.playing = true
-          function readFile() {
-            fs.open('animations/' + file.toString(), 'r', function (err, fd) {
-              if (err) throw err;
-
-              function readNextChunk() {
-                let CHUNK_SIZE = 900
-                let buffer = Buffer.alloc(CHUNK_SIZE)
-
-                if (!status.playing) {
-                  console.log('closing file');
-                  fs.close(fd, function (err) {
-                    if (err) throw err;
-                  });
-                  return;
-                }
-
-                fs.read(fd, buffer, 0, CHUNK_SIZE, null, function (err, nread) {
+        const filename = file.toString()
+        try {
+          if (fs.existsSync(animationsDir + '/' + filename) && filename !== '') {
+            console.log('playing file', filename);
+            if (!status.playing) {
+              status.playing = true
+              function readFile() {
+                fs.open(animationsDir + '/' + filename, 'r', function (err, fd) {
                   if (err) throw err;
 
-                  if (nread === 0) { // done reading file, do any necessary finalization steps
-                    fs.close(fd, function (err) {
+                  function readNextChunk() {
+                    let CHUNK_SIZE = 900
+                    let buffer = Buffer.alloc(CHUNK_SIZE)
+
+                    if (!status.playing) {
+                      console.log('closing file');
+                      fs.close(fd, function (err) {
+                        if (err) throw err;
+                      });
+                      return;
+                    }
+
+                    fs.read(fd, buffer, 0, CHUNK_SIZE, null, function (err, nread) {
                       if (err) throw err;
+
+                      if (nread === 0) { // done reading file, do any necessary finalization steps
+                        fs.close(fd, function (err) {
+                          if (err) throw err;
+                        });
+                        readFile();
+                        return;
+                      }
+
+                      let data;
+                      if (nread < CHUNK_SIZE)
+                        data = buffer.slice(0, nread);
+                      else
+                        data = buffer;
+
+                      setTimeout(() => {
+                        ws.send(data)
+                        wledSend(data)
+                        readNextChunk();
+                      }, 1000 / 25)
                     });
-                    readFile();
-                    return;
                   }
 
-                  let data;
-                  if (nread < CHUNK_SIZE)
-                    data = buffer.slice(0, nread);
-                  else
-                    data = buffer;
-
-                  setTimeout(() => {
-                    ws.send(data)
-                    wledSend(data)
-                    readNextChunk();
-                  }, 1000 / 25)
+                  readNextChunk();
                 });
               }
-
-              readNextChunk();
-            });
+              readFile()
+            }
+          } else {
+            console.log('file does not exist')
           }
-          readFile()
+        } catch(err) {
+          console.error(err)
         }
+
+
         break;
       case 5: //stop animation
         status.playing = false
