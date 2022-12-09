@@ -3,8 +3,7 @@
     <q-btn color="primary" @click="sendCommand(2)">Record</q-btn>
     <q-btn color="primary" @click="sendCommand(3)">Stop Recording</q-btn>
     <q-btn color="primary" @click="sendFrame">Send Frame</q-btn>
-    <q-input v-model="filename" label="Filename"/>
-    <q-btn color="primary" @click="playAnimation">Play animation</q-btn>
+    <q-btn v-for="(file,index) in files" :key="index" color="primary" @click="playAnimation(file)">Play animation {{ file }}</q-btn>
     <q-btn color="primary" @click="sendCommand(5)">Stop animation</q-btn>
     <q-slider v-model="left" :min="-2000" :max="0"/>
     <q-slider v-model="top" :min="-1000" :max="0"/>
@@ -81,8 +80,8 @@ export default defineComponent({
     changeZoom(z) {
       this.ctx.scale(z,z);
     },
-    playAnimation: function() {
-      this.sendCommand(4,this.filename)
+    playAnimation: function(filename) {
+      this.sendCommand(4,filename)
     },
     sendFrame: function() {
       if (!this.video.paused && !this.video.ended) {
@@ -142,7 +141,11 @@ export default defineComponent({
 
     this.connection.onmessage = function(event) {
       if (typeof event.data === 'string'){
-        console.log(JSON.parse(event.data))
+        const message = JSON.parse(event.data);
+        if (message.files) {
+          this.files = message.files
+        }
+        console.log('Got message:', JSON.parse(event.data))
       } else {
         const arrayBuffer = event.data.arrayBuffer();
         arrayBuffer.then((data) => {
@@ -167,9 +170,9 @@ export default defineComponent({
   },
   data() {
     return {
-      filename: '',
       left: 0,
-      top: 0
+      top: 0,
+      files: []
     }
   },
 });

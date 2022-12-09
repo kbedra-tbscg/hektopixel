@@ -66,7 +66,7 @@ sockserver.on('connection', (ws) => {
       if (err) {
         return console.log('Unable to scan directory: ' + err);
       }
-      ws.send(JSON.stringify(files))
+      ws.send(JSON.stringify({files}))
     });
   }
 
