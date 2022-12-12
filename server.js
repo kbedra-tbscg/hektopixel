@@ -2,20 +2,24 @@ const { WebSocketServer } = require('ws')
 const udp = require('dgram')
 const fs = require('fs')
 
-const http = require('http');
+const https = require('https');
+const express = require('express');
 
-const finalhandler = require('finalhandler');
-const serveStatic = require('serve-static');
-
-const serve = serveStatic("./hektopixel-gui/dist/spa/");
-
-const server = http.createServer(function(req, res) {
-  const done = finalhandler(req, res);
-  serve(req, res, done);
+const app = express();
+app.use(express.static('hektopixel-gui/dist/spa'));
+app.get('/', function(req, res) {
+  return res.end('<p>This server serves up static files.</p>');
 });
 
-server.listen(80);
-console.log('Static http server started at :80')
+const options = {
+  key: fs.readFileSync('cert/key.pem', 'utf8'),
+  cert: fs.readFileSync('cert/cert.pem', 'utf8'),
+  passphrase: ''
+};
+const server = https.createServer(options, app);
+
+server.listen(443);
+console.log('Static http server started at :443')
 
 // creating a client socket to wled
 const wled = udp.createSocket('udp4');
