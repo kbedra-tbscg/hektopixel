@@ -6,7 +6,10 @@
     "ws": "^8.11.0"
   },
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "postinstall": "cd hektopixel-gui && npm install",
+    "dev": "cd hektopixel-gui && quasar dev",
+    "build": "cd hektopixel-gui && quasar build"
   },
   "name": "hektopixel",
   "version": "1.0.0",
