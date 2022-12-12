@@ -18,9 +18,6 @@ const options = {
 };
 const server = https.createServer(options, app);
 
-server.listen(443);
-console.log('Static http server started at :443')
-
 // creating a client socket to wled
 const wled = udp.createSocket('udp4');
 const wledPort = 19446;
@@ -56,8 +53,7 @@ const status = {
   playing: false,
 }
 
-const sockserver = new WebSocketServer({ port: 8081 });
-console.log('Websocket server started at :8081')
+const sockserver = new WebSocketServer({ server });
 
 sockserver.on('connection', (ws) => {
   console.log('New client connected!');
@@ -179,3 +175,5 @@ sockserver.on('connection', (ws) => {
 
   ws.on('close', () => console.log('Client has disconnected!'));
 });
+server.listen(443);
+console.log('Static https server, and wss started')
