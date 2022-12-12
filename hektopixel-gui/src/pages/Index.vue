@@ -137,7 +137,7 @@ export default defineComponent({
     prev.canvas.height = 150
 
     console.log("Starting connection to WebSocket Server")
-    this.connection = new WebSocket("ws://localhost:8081")
+    this.connection = new WebSocket('ws://' + window.location.hostname + ':8081')
 
     this.connection.onmessage = function(event) {
       if (typeof event.data === 'string'){
