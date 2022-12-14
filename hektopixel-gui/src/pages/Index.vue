@@ -1,10 +1,24 @@
 <template>
   <q-page class="flex flex-center q-pa-lg">
+    <div>Status:
+      <q-badge v-if="status.playing" color="blue">Playing</q-badge>
+      <q-badge v-if="status.recording" color="red">Recording</q-badge>
+    </div>
+    <div>Clients connected: {{ status.clientsConnected }}</div>
+
     <q-btn color="primary" @click="sendCommand(2)">Record</q-btn>
     <q-btn color="primary" @click="sendCommand(3)">Stop Recording</q-btn>
+    <q-btn color="primary" @click="sendCommand(4)">Play Animation Queue</q-btn>
+    <q-btn color="primary" @click="sendCommand(5)">Stop animation Queue</q-btn>
     <q-btn color="primary" @click="sendFrame">Send Frame</q-btn>
-    <q-btn v-for="(file,index) in files" :key="index" color="primary" @click="playAnimation(file)">Play animation {{ file }}</q-btn>
-    <q-btn color="primary" @click="sendCommand(5)">Stop animation</q-btn>
+
+    <q-btn v-for="(file,index) in status.animationFiles" :key="index" color="primary" @click="addAnimation(file)">Add animation {{ file }}</q-btn>
+    <div>
+      Queue:
+      <q-btn v-for="(file,index) in status.queue" :key="index" color="primary" @click="removeAnimation(file)">Remove animation {{ file }}</q-btn>
+    </div>
+
+
     <q-slider v-model="left" :min="-2000" :max="0"/>
     <q-slider v-model="top" :min="-1000" :max="0"/>
     <q-btn color="primary" @click="changeZoom(1.1)">Z+1</q-btn>
@@ -80,8 +94,11 @@ export default defineComponent({
     changeZoom(z) {
       this.ctx.scale(z,z);
     },
-    playAnimation: function(filename) {
-      this.sendCommand(4,filename)
+    addAnimation: function(filename) {
+      this.sendCommand(6,filename)
+    },
+    removeAnimation: function(filename) {
+      this.sendCommand(7,filename)
     },
     sendFrame: function() {
       if (!this.video.paused && !this.video.ended) {
@@ -137,13 +154,13 @@ export default defineComponent({
     prev.canvas.height = 150
 
     console.log("Starting connection to WebSocket Server")
-    this.connection = new WebSocket('wss://' + window.location.hostname)
+    this.connection = new WebSocket('wss://' + window.location.hostname + '/led')
 
     this.connection.onmessage = function(event) {
       if (typeof event.data === 'string'){
         const message = JSON.parse(event.data);
-        if (message.files) {
-          this.files = message.files
+        if (message) {
+          this.status = message.status
         }
         console.log('Got message:', JSON.parse(event.data))
       } else {
@@ -172,7 +189,13 @@ export default defineComponent({
     return {
       left: 0,
       top: 0,
-      files: []
+      status: {
+        playing: false, // is playing animation
+        recording: false, // is recording frames
+        queue: [], // animations queue
+        animationFiles: [], // available animation files
+        clientsConnected: 0 // connected clients
+      }
     }
   },
 });

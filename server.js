@@ -1,93 +1,105 @@
 const { WebSocketServer } = require('ws')
-const udp = require('dgram')
 const fs = require('fs')
+const https = require('https')
+const express = require('express')
+const { wledSend } = require('./udpsender')
+const { getAnimationFiles, getStream, readFileStream } = require('./filehandler')
 
-const https = require('https');
-const express = require('express');
+const app = express()
 
-const app = express();
-app.use(express.static('hektopixel-gui/dist/spa'));
-app.get('/', function(req, res) {
-  return res.end('<p>This server serves up static files.</p>');
-});
+app.use(express.static('hektopixel-gui/dist/spa'))
+app.get('/', (req, res) => res.end('<p>This server serves up static files.</p>'))
 
 const options = {
   key: fs.readFileSync('cert/key.pem', 'utf8'),
   cert: fs.readFileSync('cert/cert.pem', 'utf8'),
   passphrase: ''
-};
-const server = https.createServer(options, app);
-
-// creating a client socket to wled
-const wled = udp.createSocket('udp4');
-const wledPort = 19446;
-const wledIp = '172.24.1.21';
+}
+const server = https.createServer(options, app)
 const animationsDir = 'animations'
 
-function wledSend(frame) {
-  const translated = Buffer.alloc(900)
-  const boardWidth = 20
-  for (let i = 0; i < 300; i++) {
-    const line = Math.floor(i/boardWidth)
-    const pixel = i % boardWidth;
-    const odd = (line % 2) === 0;
-    if (odd) {
-      translated[(i*3)] = frame[(i*3)]
-      translated[(i*3)+1] = frame[(i*3)+1]
-      translated[(i*3)+2] = frame[(i*3)+2]
-    } else {
-      const y = i+19-(pixel*2);
-      translated[(i*3)] = frame[(y*3)]
-      translated[(i*3)+1] = frame[(y*3)+1]
-      translated[(i*3)+2] = frame[(y*3)+2]
-    }
-  }
-  wled.send(translated,wledPort,wledIp,function(error){
-    if(error){
-      wled.close();
-    }
-  });
-}
-
 const status = {
-  playing: false,
+  playing: false, // is playing animation
+  recording: false, // is recording frames
+  queue: ['1670501243714.dat'], // animations queue
+  animationFiles: [], // available animation files
+  clientsConnected: 0 // connected clients
 }
 
-const sockserver = new WebSocketServer({ server });
+getAnimationFiles().then((files) => {
+  status.animationFiles = files
+})
+
+const sockserver = new WebSocketServer({ server, path: '/led' })
+
+sockserver.broadcast = function broadcast(msg) {
+  sockserver.clients.forEach((client) => {
+    client.send(msg)
+  })
+}
+
+function sendStatus() {
+  sockserver.broadcast(JSON.stringify({ status }))
+}
+
+function sendFrame(frame) {
+  sockserver.broadcast(frame)
+  wledSend(frame)
+}
+
+function playNextAnimation() {
+  if (status.queue.length) {
+    const filename = status.queue.shift()
+    status.queue.push(filename)
+    console.log('playing animation', filename)
+    const stream = readFileStream(filename)
+    stream.on('data', (chunk) => {
+      if (status.playing) {
+        sendFrame(chunk)
+        stream.pause();
+        setTimeout(() => {
+          stream.resume()
+        }, 1000 / 25)
+      } else {
+        stream.destroy()
+      }
+    })
+    stream.on('end', () => {
+      console.log('end')
+      stream.destroy()
+      playNextAnimation()
+    })
+  } else {
+    status.playing = false
+    sendStatus()
+  }
+}
 
 sockserver.on('connection', (ws) => {
-  console.log('New client connected!');
-  let stream = null;
-  let recordTimeout = null;
+  console.log('New client connected!')
+  status.clientsConnected++
+  sendStatus()
 
-  function sendFiles() {
-    fs.readdir(animationsDir, function (err, files) {
-      //handling error
-      if (err) {
-        return console.log('Unable to scan directory: ' + err);
-      }
-      ws.send(JSON.stringify({files}))
-    });
-  }
+  let stream = null // stream obj for recording
+  let recordTimeout = null
 
-  sendFiles()
-
-  ws.on('message', function message(data) {
-    const cmd = data.subarray(0, 1).readInt8(0);
+  ws.on('message', (data) => {
+    const cmd = data.subarray(0, 1).readInt8(0)
     switch (cmd) {
-      case 1: // frame
-        const frame = data.subarray(1, 901);
+      case 1: // single frame
+        const frame = data.subarray(1, 901)
         if (stream) {
-          stream.write(frame);
+          stream.write(frame)
         }
-        ws.send(frame)
-        wledSend(frame)
-        break;
+        sendFrame(frame)
+        break
       case 2: // record to file
         if (!stream) {
           console.log('Start record')
-          const timestamp = Date.now();
-          stream = fs.createWriteStream(animationsDir + '/' + timestamp + '.dat', {flags: 'a'});
+          status.playing = false
+          status.recording = true
+          sendStatus()
+          stream = getStream()
           recordTimeout = setTimeout(() => {
             if (stream) {
               console.log('Recording timeout')
@@ -96,84 +108,48 @@ sockserver.on('connection', (ws) => {
             }
           }, 60 * 1000)
         }
-      break;
+        break
       case 3: // stop recording
         console.log('Stop record')
-        stream.end()
-        stream = null
-        break;
-      case 4:
-        const file = data.subarray(1, data.length);
-        const filename = file.toString()
-        try {
-          if (fs.existsSync(animationsDir + '/' + filename) && filename !== '') {
-            console.log('playing file', filename);
-            if (!status.playing) {
-              status.playing = true
-              function readFile() {
-                fs.open(animationsDir + '/' + filename, 'r', function (err, fd) {
-                  if (err) throw err;
-
-                  function readNextChunk() {
-                    let CHUNK_SIZE = 900
-                    let buffer = Buffer.alloc(CHUNK_SIZE)
-
-                    if (!status.playing) {
-                      console.log('closing file');
-                      fs.close(fd, function (err) {
-                        if (err) throw err;
-                      });
-                      return;
-                    }
-
-                    fs.read(fd, buffer, 0, CHUNK_SIZE, null, function (err, nread) {
-                      if (err) throw err;
-
-                      if (nread === 0) { // done reading file, do any necessary finalization steps
-                        fs.close(fd, function (err) {
-                          if (err) throw err;
-                        });
-                        readFile();
-                        return;
-                      }
-
-                      let data;
-                      if (nread < CHUNK_SIZE)
-                        data = buffer.slice(0, nread);
-                      else
-                        data = buffer;
-
-                      setTimeout(() => {
-                        ws.send(data)
-                        wledSend(data)
-                        readNextChunk();
-                      }, 1000 / 25)
-                    });
-                  }
-
-                  readNextChunk();
-                });
-              }
-              readFile()
-            }
-          } else {
-            console.log('file does not exist')
-          }
-        } catch(err) {
-          console.error(err)
+        if (stream) {
+          if (recordTimeout) clearTimeout(recordTimeout)
+          stream.end()
+          stream = null
         }
-
-
-        break;
-      case 5: //stop animation
+        break
+      case 4: // start animation queue
+        if (!status.playing && !status.recording) {
+          status.playing = true
+          sendStatus()
+          playNextAnimation()
+        }
+        break
+      case 5: // stop animation queue
         status.playing = false
-        break;
+        sendStatus()
+        break
+      case 6: // add animation to queue
+        status.queue.push(data.subarray(1, data.length).toString())
+        sendStatus()
+        break
+      case 7: // remove animation from queue
+        const filename = data.subarray(1, data.length).toString()
+        const index = status.queue.indexOf(filename)
+        if (index !== -1) {
+          status.queue.splice(index, 1)
+          sendStatus()
+        }
+        break
       default:
         console.warn('unknown command')
     }
-  });
+  })
 
-  ws.on('close', () => console.log('Client has disconnected!'));
-});
-server.listen(443);
-console.log('Static https server, and wss started')
+  ws.on('close', () => {
+    console.log('Client has disconnected!')
+    status.clientsConnected--
+  })
+})
+
+server.listen(443)
+console.log('Static https server, and websocket started')

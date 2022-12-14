@@ -3,13 +3,15 @@
     "artnet-protocol": "^0.2.1",
     "express": "^4.18.2",
     "https": "^1.0.0",
+    "socket.io": "^4.5.4",
     "ws": "^8.11.0"
   },
   "scripts": {
     "start": "node server.js",
     "postinstall": "cd hektopixel-gui && npm install",
     "dev": "cd hektopixel-gui && quasar dev",
-    "build": "cd hektopixel-gui && quasar build"
+    "build": "cd hektopixel-gui && quasar build",
+    "lint": "eslint --fix ./*.js"
   },
   "name": "hektopixel",
   "version": "1.0.0",
@@ -24,5 +26,10 @@
     "url": "https://github.com/kbedra-tbscg/hektopixel/issues"
   },
   "homepage": "https://github.com/kbedra-tbscg/hektopixel#readme",
-  "description": ""
+  "description": "",
+  "devDependencies": {
+    "eslint": "^8.29.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-plugin-import": "^2.26.0"
+  }
 }
