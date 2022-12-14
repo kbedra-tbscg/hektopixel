@@ -140,9 +140,9 @@ module.exports = configure(function (ctx) {
       },
 
       manifest: {
-        name: `Quasar App`,
-        short_name: `Quasar App`,
-        description: `A Quasar Framework app`,
+        name: `Hektopixel GUI`,
+        short_name: `Hektopixel GUI`,
+        description: `A graphic user interface for Hektopixel board`,
         display: "standalone",
         orientation: "portrait",
         background_color: "#ffffff",

@@ -2,7 +2,7 @@
   "name": "hekropixel-gui2",
   "version": "0.0.1",
   "description": "A Quasar Framework app",
-  "productName": "Quasar App",
+  "productName": "Hektopixel GUI",
   "author": "Krzysztof Bedra <kbedra@tbscg.com>",
   "private": true,
   "scripts": {

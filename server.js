@@ -16,7 +16,6 @@ const options = {
   passphrase: ''
 }
 const server = https.createServer(options, app)
-const animationsDir = 'animations'
 
 const status = {
   playing: false, // is playing animation
@@ -25,10 +24,6 @@ const status = {
   animationFiles: [], // available animation files
   clientsConnected: 0 // connected clients
 }
-
-getAnimationFiles().then((files) => {
-  status.animationFiles = files
-})
 
 const sockserver = new WebSocketServer({ server, path: '/led' })
 
@@ -41,6 +36,16 @@ sockserver.broadcast = function broadcast(msg) {
 function sendStatus() {
   sockserver.broadcast(JSON.stringify({ status }))
 }
+
+function updateFiles() {
+  getAnimationFiles().then((files) => {
+    console.log('new file')
+    status.animationFiles = files
+    sendStatus()
+  })
+}
+
+updateFiles()
 
 function sendFrame(frame) {
   sockserver.broadcast(frame)
@@ -111,11 +116,13 @@ sockserver.on('connection', (ws) => {
         break
       case 3: // stop recording
         console.log('Stop record')
+        status.recording = false
         if (stream) {
           if (recordTimeout) clearTimeout(recordTimeout)
           stream.end()
           stream = null
         }
+        updateFiles()
         break
       case 4: // start animation queue
         if (!status.playing && !status.recording) {
