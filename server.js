@@ -57,26 +57,45 @@ function playNextAnimation() {
     const filename = status.queue.shift()
     status.queue.push(filename)
     console.log('playing animation', filename)
-    const stream = readFileStream(filename)
-    stream.on('data', (chunk) => {
-      if (status.playing) {
-        sendFrame(chunk)
-        stream.pause();
-        setTimeout(() => {
-          stream.resume()
-        }, 1000 / 25)
-      } else {
-        stream.destroy()
+    fs.open(`animations/${filename}`, 'r', (err, fd) => {
+      if (err) throw err
+
+      function readNextChunk() {
+        const CHUNK_SIZE = 900
+        const buffer = Buffer.alloc(CHUNK_SIZE)
+
+        if (!status.playing) {
+          console.log('closing file')
+          fs.close(fd, (err) => {
+            if (err) throw err
+          })
+          return
+        }
+
+        fs.read(fd, buffer, 0, CHUNK_SIZE, null, (err, nread) => {
+          if (err) throw err
+
+          if (nread === 0) {
+            fs.close(fd, (err) => {
+              if (err) throw err
+            })
+            playNextAnimation()
+            return
+          }
+
+          let data
+          if (nread < CHUNK_SIZE) data = buffer.slice(0, nread)
+          else data = buffer
+
+          setTimeout(() => {
+            sendFrame(data)
+            readNextChunk()
+          }, 1000 / 25)
+        })
       }
+
+      readNextChunk()
     })
-    stream.on('end', () => {
-      console.log('end')
-      stream.destroy()
-      playNextAnimation()
-    })
-  } else {
-    status.playing = false
-    sendStatus()
   }
 }
 
