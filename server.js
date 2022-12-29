@@ -1,13 +1,15 @@
 const { WebSocketServer } = require('ws')
 const fs = require('fs')
 const https = require('https')
+const { v4: uuidv4, } = require('uuid')
 const express = require('express')
 const { wledSend } = require('./udpsender')
-const { getAnimationFiles, getStream, readFileStream } = require('./filehandler')
+const { getAnimationFiles, getStream } = require('./filehandler')
 
 const app = express()
 
 app.use(express.static('hektopixel-gui/dist/spa'))
+app.use('/animations', express.static('animations'))
 app.get('/', (req, res) => res.end('<p>This server serves up static files.</p>'))
 
 const options = {
@@ -99,13 +101,21 @@ function playNextAnimation() {
   }
 }
 
+function heartbeat() {
+  console.log('pong received', this.id)
+  this.isAlive = true;
+}
+
 sockserver.on('connection', (ws) => {
   console.log('New client connected!')
-  status.clientsConnected++
+  ws.id = uuidv4()
+  ws.isAlive = true
+  status.clientsConnected = sockserver.clients.size
   sendStatus()
-
   let stream = null // stream obj for recording
   let recordTimeout = null
+
+  ws.on('pong', heartbeat)
 
   ws.on('message', (data) => {
     const cmd = data.subarray(0, 1).readInt8(0)
@@ -173,9 +183,24 @@ sockserver.on('connection', (ws) => {
 
   ws.on('close', () => {
     console.log('Client has disconnected!')
-    status.clientsConnected--
+    status.clientsConnected = sockserver.clients.size
+    sendStatus()
   })
 })
+
+setInterval(() => {
+  sockserver.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      console.log('client is dead', ws.id)
+      return ws.terminate()
+    }
+    console.log('ping', ws.id)
+    // eslint-disable-next-line no-param-reassign
+    ws.isAlive = false
+    ws.ping()
+    return true
+  })
+}, 30000)
 
 server.listen(443)
 console.log('Static https server, and websocket started')

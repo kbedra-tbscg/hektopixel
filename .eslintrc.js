@@ -14,7 +14,7 @@ module.exports = {
     semi: [1, 'never'],
     'comma-dangle': 'off',
     'no-console': 'off',
-    'no-plusplus': 'off'
-
+    'no-plusplus': 'off',
+    'no-param-reassign': 'off',
   },
 }
